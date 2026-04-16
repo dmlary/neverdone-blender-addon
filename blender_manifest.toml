@@ -1,0 +1,24 @@
+schema_version = "1.0.0"
+
+# Unique identifier (lowercase, no spaces)
+id = "godot_workflow"
+version = "0.1.0"
+name = "Godot Workflow Tools"
+tagline = "Set of tools for working with Godot"
+maintainer = "David M. Lary <dmlary@gmail.com>"
+type = "add-on"
+
+permissions = ["files"]
+
+# Minimum Blender version supported
+blender_version_min = "4.2.0"
+
+# License (SPDX format, e.g., GPL-2.0-or-later)
+license = ["SPDX:GPL-3.0-or-later"]
+
+# Optional: Tags for the Asset Browser/Extensions store
+tags = ["Import-Export"]
+
+[links]
+# Optional: Where users go for help
+#homepage = "https://github.com/yourname/my_tool"
