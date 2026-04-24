@@ -352,6 +352,15 @@ class glTF2ExportUserExtension:
                 # Add the object to the set for later processing
                 collision_objects.add(obj)
 
+                # Apply the scaling to collision shapes before exporting the
+                # collision shapes to ensure they have a uniform scale.
+                # Note: this could be changed to detect non-uniform scale, and
+                # only then apply scale.
+                with bpy.context.temp_override(
+                    active_object=obj, selected_editable_objects=[obj]
+                ):
+                    bpy.ops.object.transform_apply(
+                            location=False, rotation=False, scale=True)
                 # if the object is disabled, enable it and add it to the list
                 # to be disabled in the post_export_hook
                 # NOTE: if we try to enable the object in the viewport, we can
@@ -380,6 +389,8 @@ class glTF2ExportUserExtension:
         rich.print("iterating on collision shape visibility")
         for obj in self._enabled_objects:
             obj.hide_viewport = False
+
+
         rich.print("evaluate depsgraph")
         depsgraph = bpy.context.evaluated_depsgraph_get()
         for obj in collision_objects:
