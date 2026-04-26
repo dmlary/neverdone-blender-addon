@@ -47,6 +47,11 @@ class GW_preferences(bpy.types.AddonPreferences):
         default="BODY-",
         description="Prefix for Physics Body Objects",
     )
+    path_prefix: bpy.props.StringProperty(
+        name="Path3D Object Prefix",
+        default="PATH-",
+        description="Prefix for Path3D Objects",
+    )
 
     def draw(self, _context):
         layout = self.layout
@@ -76,6 +81,9 @@ class GW_preferences(bpy.types.AddonPreferences):
         layout.separator()
         layout.prop(self, "collision_object_prefix")
         layout.prop(self, "collision_object_color")
+
+        layout.separator()
+        layout.prop(self, "path_prefix")
 
     def get_output_path(self, tail: str = "") -> pathlib.Path:
         blend_file = pathlib.Path(bpy.data.filepath)

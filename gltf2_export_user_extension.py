@@ -283,6 +283,32 @@ class glTF2ExportUserExtension:
                 ),
             }
 
+        # Special handling for PATH- objects; convert the path to points for a
+        # Path3D in Godot
+        elif blender_object.name.startswith(self.addon_prefs.path_prefix):
+            count = len(blender_object.data.splines)
+            if count > 1:
+                log.warning(
+                    f"WARN: {blender_object.name} has {count} splines; only exporting first spline"
+                )
+            if count == 0:
+                log.warning(
+                    f"WARN: {blender_object.name} has no splines; path not exported"
+                )
+            else:
+                spline = blender_object.data.splines[0]
+                if spline.type != "BEZIER":
+                    log.warning(
+                        f"WARN: {blender_object.name} has unsupported {spline.type} spline; path not transferred"
+                    )
+                else:
+                    points = []
+                    for point in spline.bezier_points:
+                        points.append(
+                            [point.co[:], point.handle_left[:], point.handle_right[:]]
+                        )
+                    gltf2_node.extras = {"path_points": points}
+
         # We need to do a little bit of cleanup of scene instance properties
         elif instance_props.LINKED_SCENE_PROPS_NAME in blender_object:
             extras = gltf2_node.extras[instance_props.LINKED_SCENE_PROPS_NAME]
