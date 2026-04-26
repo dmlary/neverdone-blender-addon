@@ -132,7 +132,23 @@ class GW_OT_setup_collection_export(bpy.types.Operator):
         # update the export properties
         exporter_props = exporter.export_properties
         self._set_common_exporter_props(exporter_props, collection)
-        exporter_props.export_animation_mode = "BROADCAST"
+
+        # When using object-based animation, where multiple objects within the
+        # collection are animated using action slots, if we use a value here
+        # like BROADCAST, We end up with duplicate animation tracks being
+        # exported to the GLTF file, and only one object ends up animated in
+        # Godot.
+        #
+        # Instead, I'm going to use ACTIVE_ACTIONS here, which will merge any
+        # actions active within the collection into a single animation.  We're
+        # also going to set the name of the exported animation to match the
+        # collection name.  We do this to reduce the redundant/confusion around
+        # is the Action name the thing, or the collection name the thing?
+        # Note: we also update this name during the pre-export hook of the GLTF
+        # export user extension. 
+        exporter_props.export_animation_mode = "ACTIVE_ACTIONS"
+        exporter_props.export_nla_strips_merged_animation_name = collection.name
+
         exporter_props.export_frame_range = True
         exporter_props.export_anim_slide_to_zero = True
         exporter_props.export_negative_frame = "CROP"

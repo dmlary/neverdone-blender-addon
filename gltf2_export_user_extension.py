@@ -206,6 +206,31 @@ class glTF2ExportUserExtension:
     def pre_export_hook(self, export_settings):
         log = export_settings["log"]
         collection = bpy.data.collections[export_settings["gltf_collection"]]
+        export_props: export.GW_PG_export_properties = collection.godot_workflow_props
+
+        # If this is an animation export, ensure the export animation name
+        # matches the collection name.  More details in
+        # export._setup_anim_export()
+        # NOTE: We probably should do something like this for the export
+        # destination path.  Right now the user has to click on setup again if
+        # they change the name of the collection.
+        if export_props.export_type == "ANIMATION":
+            # force the exported animation name to match the collection name
+            export_settings["gltf_nla_strips_merged_animation_name"] = collection.name
+
+            # Also update the collection exporter config so the animation name
+            # matches the collection name, so the user isn't too confused when
+            # they manually set a name, and it exports as something else.
+            # It's not the best solution here, but it's some sort of visual
+            # feedback
+            exporter = next(
+                (e for e in collection.exporters if e.name == export.EXPORTER_NAME),
+                None,
+            )
+            if exporter:
+                exporter.export_properties.export_nla_strips_merged_animation_name = (
+                    collection.name
+                )
 
         self._pre_process_collection(collection, log)
 
@@ -360,7 +385,9 @@ class glTF2ExportUserExtension:
                     active_object=obj, selected_editable_objects=[obj]
                 ):
                     bpy.ops.object.transform_apply(
-                            location=False, rotation=False, scale=True)
+                        location=False, rotation=False, scale=True
+                    )
+
                 # if the object is disabled, enable it and add it to the list
                 # to be disabled in the post_export_hook
                 # NOTE: if we try to enable the object in the viewport, we can
@@ -389,7 +416,6 @@ class glTF2ExportUserExtension:
         rich.print("iterating on collision shape visibility")
         for obj in self._enabled_objects:
             obj.hide_viewport = False
-
 
         rich.print("evaluate depsgraph")
         depsgraph = bpy.context.evaluated_depsgraph_get()
