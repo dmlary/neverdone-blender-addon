@@ -2,7 +2,7 @@ import os
 import re
 from datetime import datetime
 from typing import Any, List, Optional, Tuple
-import rich
+from . import debug
 import numpy as np
 import bpy
 import mathutils
@@ -96,7 +96,7 @@ def gather_collision_shape(obj):
         # it's not a box, make it a mesh
         collision_info = {"type": "MESH"}
 
-    rich.print(f"{collision_info=}")
+    debug.print(f"{collision_info=}")
     return collision_info
 
 
@@ -235,7 +235,7 @@ class glTF2ExportUserExtension:
         self._pre_process_collection(collection, log)
 
     def post_export_hook(self, export_settings):
-        rich.print("post export hook")
+        debug.print("post export hook")
         log = export_settings["log"]
         collection = bpy.data.collections[export_settings["gltf_collection"]]
         self._post_process_collection(collection, log)
@@ -244,7 +244,7 @@ class glTF2ExportUserExtension:
     #     return
 
     def gather_scene_hook(self, gltf2_scene, blender_scene, export_settings):
-        rich.print("gather scene hook")
+        debug.print("gather scene hook")
         collection = bpy.data.collections[export_settings["gltf_collection"]]
         export_props: export.GW_PG_export_properties = collection.godot_workflow_props
         # Add the human-readable export type as an asset_type extra in the scene
@@ -265,7 +265,7 @@ class glTF2ExportUserExtension:
         )
 
     def gather_node_hook(self, gltf2_node, blender_object, export_settings):
-        rich.print("gather node hook")
+        debug.print("gather node hook")
         log = export_settings["log"]
 
         # imports the proper name to align with animation tracks for the rig.
@@ -339,7 +339,7 @@ class glTF2ExportUserExtension:
     def animation_action_hook(
         self, gltf2_animation, blender_object, blender_action_data, export_settings
     ):
-        rich.print("anim action hook")
+        debug.print("anim action hook")
         # For every animation, add an extra that tracks the asset_id of the
         # rig library collection.  This allows the godot importer to look up
         # and update track NodePaths during animation import.
@@ -347,7 +347,7 @@ class glTF2ExportUserExtension:
         if collection and "asset_id" in collection:
             gltf2_animation.extras = {"rig_asset_ref": collection["asset_id"]}
         else:
-            rich.print("ERROR: no asset_id in collection!!!")
+            debug.print("ERROR: no asset_id in collection!!!")
 
     def _pre_process_collection(self, collection, log):
         """Pre-process a collection for GLTF export
@@ -371,9 +371,9 @@ class glTF2ExportUserExtension:
 
         # iterate through all objects in the collection, preparing them for
         # export
-        rich.print("iterating on objects")
+        debug.print("iterating on objects")
         for obj in collection.all_objects:
-            rich.print(obj)
+            debug.print(obj)
             # convert asset collection instances to empties with an asset_ref
             if obj.instance_type == "COLLECTION":
                 if not obj.instance_collection:
@@ -396,6 +396,7 @@ class glTF2ExportUserExtension:
                 if "asset_id" not in mat:
                     log.warning(f"No asset_id set for material `{mat.name}`")
                     continue
+                debug.print("added material", mat)
                 materials.add(mat)
 
             # Special handling for collision objects
@@ -430,32 +431,45 @@ class glTF2ExportUserExtension:
 
         # Replace materials with placeholder references to real material in
         # godot
-        rich.print("iterating on materials")
+        debug.print("iterating on materials")
         for mat in materials:
             dummy_mat = bpy.data.materials.new(f"MATREF-{mat.name}")
+            debug.print("replace material", mat, " with ", dummy_mat)
             mat.user_remap(dummy_mat)
             dummy_mat["asset_ref"] = mat["asset_id"]
             self._swapped_materials.append((mat, dummy_mat))
 
+        # After the material remap loop (line 440), add:
+        for obj in collection.all_objects:
+            for i, slot in enumerate(obj.material_slots):
+                debug.print(
+                    f"Post-remap slot: {obj.name}[{i}] = {slot.material.name if slot.material else 'None'}"
+                )
+            if obj.data and hasattr(obj.data, "materials"):
+                for i, m in enumerate(obj.data.materials):
+                    debug.print(
+                        f"Post-remap mesh mat: {obj.data.name}[{i}] = {m.name if m else 'None'}"
+                    )
+
         # Enable all disabled collision objects in the collection, and generate
         # the depsgraph.
-        rich.print("iterating on collision shape visibility")
+        debug.print("iterating on collision shape visibility")
         for obj in self._enabled_objects:
             obj.hide_viewport = False
 
-        rich.print("evaluate depsgraph")
+        debug.print("evaluate depsgraph")
         depsgraph = bpy.context.evaluated_depsgraph_get()
         for obj in collision_objects:
             # don't bother for objects linked from an external library
             if obj.library or obj.override_library:
-                rich.print(f"not setting collision shape on library obj {obj}")
+                debug.print(f"not setting collision shape on library obj {obj}")
                 continue
 
             # get the collision shape object with modifiers applied
             eval_obj = obj.evaluated_get(depsgraph)
-            rich.print(f"name {obj=} -> {eval_obj=}")
+            debug.print(f"name {obj=} -> {eval_obj=}")
             obj["collision_shape"] = gather_collision_shape(eval_obj)
-        rich.print("pre-process collection complete")
+        debug.print("pre-process collection complete")
 
     def _post_process_collection(self, collection, log):
         """Revert changes made in pre_process_collection() after GLTF has been exported"""

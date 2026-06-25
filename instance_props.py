@@ -1,8 +1,8 @@
 import pathlib
-import rich
 import bpy
 from bpy.app.handlers import persistent
 
+from . import debug
 from . import export
 from . import godot_utils as gd
 from .prefs import GW_preferences
@@ -114,7 +114,7 @@ def make_godot_scene_props_updater(obj, prop_name):
 
 def active_obj_changed_callback():
     """Called when the active object changes, updates Godot scene prop list"""
-    rich.print("Active object: ", bpy.context.active_object)
+    debug.print("Active object: ", bpy.context.active_object)
 
     # Active object changed, so remove the property group.  The new active
     # object may not be a linked scene with properties.
@@ -130,22 +130,22 @@ def active_obj_changed_callback():
     if obj is None:
         return
     if obj.type != "EMPTY" or obj.instance_type != "COLLECTION":
-        rich.print("Not a collection instance")
+        debug.print("Not a collection instance")
         return
 
     # Verify the collection is a SCENE export_type
     collection = obj.instance_collection
     if not collection:
-        rich.print("Instance collection not found")
+        debug.print("Instance collection not found")
         return
 
     export_props = collection.godot_workflow_props
     if not export_props:
-        rich.print("godot_workflow_props not found")
+        debug.print("godot_workflow_props not found")
         return
 
     if export_props.export_type != "SCENE":
-        rich.print("not a scene export")
+        debug.print("not a scene export")
         return
 
     # Get the export path for the collection
@@ -180,7 +180,7 @@ def active_obj_changed_callback():
         LinkedScenePropertyGroup.__annotations__[prop_name] = prop_type(
             update=make_godot_scene_props_updater(obj, prop_name),
         )
-    rich.print(LinkedScenePropertyGroup.__annotations__)
+    debug.print(LinkedScenePropertyGroup.__annotations__)
     bpy.utils.register_class(LinkedScenePropertyGroup)
     bpy.types.Scene.godot_scene_props = bpy.props.PointerProperty(
         type=LinkedScenePropertyGroup,

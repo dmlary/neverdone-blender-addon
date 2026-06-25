@@ -1,6 +1,6 @@
 import re
 import sys
-import rich
+from . import debug
 from typing import Optional
 from pathlib import Path
 
@@ -146,7 +146,7 @@ class Project:
         path = tscn_path
         while path is not None:
             scene = self.load_scene(path)
-            rich.inspect(scene)
+            debug.inspect(scene)
             scenes.append(scene)
             path = scene.root_instance
         scenes.reverse()
@@ -156,7 +156,7 @@ class Project:
             if not scene.script:
                 continue
             script = self.load_script(scene.script)
-            rich.inspect(script)
+            debug.inspect(script)
             props |= script.props
 
         return props
@@ -212,4 +212,4 @@ if __name__ == "__main__":
     print(f"running on: {repr(sys.argv)}")
     # scan_project(sys.argv[1])
     p = Project(Path(sys.argv[1]))
-    rich.print(p.get_scene_exports(Path(sys.argv[2])))
+    debug.print(p.get_scene_exports(Path(sys.argv[2])))

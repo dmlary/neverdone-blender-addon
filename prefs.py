@@ -1,9 +1,9 @@
 from typing import Optional
 import bpy
 import pathlib
-import rich
 import os
 import re
+from . import debug
 
 # API prefix used for all operators
 PREFIX = "godot_workflow"
@@ -89,7 +89,7 @@ class GW_preferences(bpy.types.AddonPreferences):
         blend_file = pathlib.Path(bpy.data.filepath)
         rel_path = blend_file.relative_to(self.source_path()).with_suffix("")
         output_path = self.godot_assets_path(rel_path)
-        rich.inspect(
+        debug.inspect(
             dict(blend_file=blend_file, rel_path=rel_path, output_path=output_path)
         )
         # relative_to() doesn't yet support walk_up=True, so workaround here
@@ -122,7 +122,7 @@ class GW_preferences(bpy.types.AddonPreferences):
         """
         # try pulling the project root from the preferences first
         if self.project_path:
-            return self.project_path
+            return pathlib.Path(self.project_path)
 
         # failing that, walk up the directory tree from the blend file looking for
         # a .git/ directory
