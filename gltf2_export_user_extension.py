@@ -430,7 +430,22 @@ class glTF2ExportUserExtension:
                 del obj["collision_shape"]
 
         # Replace materials with placeholder references to real material in
-        # godot
+        # godot.
+        # NOTE: user_remap() does not work properly on Mesh objects that have
+        # been linked from libraries, even with a overrides enabled.  I've seen
+        # user_remap() only replace the material of one mesh in an animation
+        # collection have it's material remapped during export.  This happens
+        # because if you only Make Library Override for the Selected & Content
+        # of a linked asset collection, that override doesn't traverse deep
+        # enough to allow the setting of the Material on the Mesh within the
+        # Object, within the Linked Collection:
+        #
+        #    Linked Collection -> Object -> Mesh -> Material
+        #    ^-------------------------^    ^--------------^
+        #       first Make Lib override     second Make lib override
+        #
+        # This workflow is absurd to ask of artists, so I'm going to clean up
+        # the leaked material on the Godot side instead.
         debug.print("iterating on materials")
         for mat in materials:
             dummy_mat = bpy.data.materials.new(f"MATREF-{mat.name}")
@@ -438,18 +453,6 @@ class glTF2ExportUserExtension:
             mat.user_remap(dummy_mat)
             dummy_mat["asset_ref"] = mat["asset_id"]
             self._swapped_materials.append((mat, dummy_mat))
-
-        # After the material remap loop (line 440), add:
-        for obj in collection.all_objects:
-            for i, slot in enumerate(obj.material_slots):
-                debug.print(
-                    f"Post-remap slot: {obj.name}[{i}] = {slot.material.name if slot.material else 'None'}"
-                )
-            if obj.data and hasattr(obj.data, "materials"):
-                for i, m in enumerate(obj.data.materials):
-                    debug.print(
-                        f"Post-remap mesh mat: {obj.data.name}[{i}] = {m.name if m else 'None'}"
-                    )
 
         # Enable all disabled collision objects in the collection, and generate
         # the depsgraph.

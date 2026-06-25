@@ -145,13 +145,17 @@ class GW_OT_setup_collection_export(bpy.types.Operator):
         # collection name.  We do this to reduce the redundant/confusion around
         # is the Action name the thing, or the collection name the thing?
         # Note: we also update this name during the pre-export hook of the GLTF
-        # export user extension. 
+        # export user extension.
         exporter_props.export_animation_mode = "ACTIVE_ACTIONS"
         exporter_props.export_nla_strips_merged_animation_name = collection.name
 
         exporter_props.export_frame_range = True
         exporter_props.export_anim_slide_to_zero = True
         exporter_props.export_negative_frame = "CROP"
+
+        # Disable material export; we're not going to be using them in Godot.
+        # We just pull the animation tracks out of the GLTF file.
+        exporter_props.export_materials = "NONE"
 
         # We need to set the animation library subpath for the collection.  We
         # bundle all animation tracks for the same rig into one animation
