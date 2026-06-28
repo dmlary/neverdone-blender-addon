@@ -264,6 +264,15 @@ class glTF2ExportUserExtension:
             "%Y-%m-%dT%H:%M:%S"
         )
 
+        # Due to float accumulation errors, we can't properly calculate the
+        # FPS from the GLTF file (32-bit float can't represent 1/30 properly).
+        # So we're just going to explicitly store fps & fps_base in the scene
+        # extras, and use that to set import FPS in godot
+        gltf2_scene.extras["frame_rate_ratio"] = [
+            bpy.context.scene.render.fps,
+            bpy.context.scene.render.fps_base,
+        ]
+
     def gather_node_hook(self, gltf2_node, blender_object, export_settings):
         debug.print("gather node hook")
         log = export_settings["log"]
