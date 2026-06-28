@@ -2,10 +2,10 @@ import pathlib
 import os
 import bpy
 
-from .prefs import GW_preferences, PREFIX
+from .prefs import GW_preferences, PREFIX, NPANEL_NAME
 
 # name used for Collection Exporters
-EXPORTER_NAME = "Godot Workflow"
+EXPORTER_NAME = "Neverdone (Godot GLTF)"
 
 # Different export targets
 EXPORT_TYPES = [
@@ -277,7 +277,7 @@ class GW_OT_export(bpy.types.Operator):
 class GW_PT_export_npanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Godot Workflow"
+    bl_category = NPANEL_NAME
     bl_label = "Godot Export"
 
     def draw(self, context):

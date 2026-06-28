@@ -5,7 +5,7 @@ from bpy.app.handlers import persistent
 from . import debug
 from . import export
 from . import godot_utils as gd
-from .prefs import GW_preferences
+from .prefs import NPANEL_NAME, GW_preferences
 
 # Dynamic property group used when setting scene instance properties
 LinkedScenePropertyGroup = None
@@ -49,7 +49,7 @@ class GW_PG_node_instance_properties(bpy.types.PropertyGroup):
 class GW_PT_scene_props_npanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Godot Workflow"
+    bl_category = NPANEL_NAME
     bl_label = "Godot Instance Properties"
 
     def draw(self, context):

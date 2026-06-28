@@ -6,7 +6,8 @@ import re
 from . import debug
 
 # API prefix used for all operators
-PREFIX = "godot_workflow"
+PREFIX = "neverdone"
+NPANEL_NAME = "Neverdone (Godot)"
 
 
 class GW_preferences(bpy.types.AddonPreferences):

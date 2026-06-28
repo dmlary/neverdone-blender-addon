@@ -40,7 +40,7 @@ class GW_OT_set_collision_object_visibility(bpy.types.Operator):
 class GW_PT_tools_npanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Godot Workflow"
+    bl_category = prefs.NPANEL_NAME
     bl_label = "Tools"
 
     def draw(self, context):
