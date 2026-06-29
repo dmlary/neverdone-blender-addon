@@ -11,6 +11,7 @@ EXPORTER_NAME = "Neverdone (Godot GLTF)"
 EXPORT_TYPES = [
     ("NONE", "None", "", "NONE", 0),
     ("GLTF", "GLTF", "", "ASSET_MANAGER", 1),
+    ("INHERIT", "Inherited GLTF Scene", "", "SEQUENCE", 4),
     ("SCENE", "Scene + GLTF", "", "SEQUENCE", 2),
     ("ANIMATION", "Animation", "", "RENDER_ANIMATION", 3),
 ]
@@ -85,7 +86,11 @@ class GW_OT_setup_collection_export(bpy.types.Operator):
         context.collection["as_scene"] = export_props.export_type == "SCENE"
 
         # GLTF and SCENE are the same other than the `as_scene` flag
-        if export_props.export_type == "GLTF" or export_props.export_type == "SCENE":
+        if (
+            export_props.export_type == "GLTF"
+            or export_props.export_type == "SCENE"
+            or export_props.export_type == "INHERIT"
+        ):
             return self._setup_asset_export(context, export_props)
         if export_props.export_type == "ANIMATION":
             return self._setup_anim_export(context, export_props)
