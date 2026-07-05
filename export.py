@@ -213,6 +213,8 @@ class GW_OT_setup_collection_export(bpy.types.Operator):
         exporter_props.export_extras = True
         exporter_props.filepath = "//" + str(
             addon_prefs.get_output_path()
+            / addon_prefs.normalize_path_part(collection.name)
+            / "export"
             / addon_prefs.normalize_path_part(f"{collection.name}.gltf")
         )
         # Only export deformation bones
