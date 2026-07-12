@@ -42,6 +42,25 @@ ROOT_NODE_TYPES = [
     ),
 ]
 
+# Animation loop modes
+ANIM_LOOP_MODES = [
+    ("NONE", "None", "Default; looping disabled", "PLAY", 0),
+    (
+        "LINEAR",
+        "Repeat",
+        "Restart the animation from the first frame when the player reaches the last frame",
+        "FILE_REFRESH",
+        1,
+    ),
+    (
+        "PINGPONG",
+        "Ping-Pong",
+        "Reverse the animation direction when we reach the last frame",
+        "ARROW_LEFTRIGHT",
+        2,
+    ),
+]
+
 
 def create_asset_id() -> str:
     """Creat a new asset_id uri"""
@@ -64,6 +83,9 @@ class GW_PG_export_properties(bpy.types.PropertyGroup):
         name="Animation Library Resource Path",
         default="",
         description="Godot Resource path for the animation library exported tracks will be added to",
+    )
+    anim_loop_mode: bpy.props.EnumProperty(
+        name="Loop Mode", items=ANIM_LOOP_MODES, description="Animation looping mode"
     )
 
 
@@ -315,14 +337,10 @@ class GW_PT_export_npanel(bpy.types.Panel):
                 row = init_panel.row()
                 row.alert = res_path != "" and not res_path.startswith("res://")
                 row.prop(export_props, "base_scene_res_path")
-            # if export_props.export_type == "ANIMATION":
-            #     row = init_panel.row()
-            #     row.alert = export_props.anim_lib_res_path == ""
-            #     row.prop(
-            #         export_props,
-            #         "anim_lib_res_path",
-            #         placeholder=export_props.anim_lib_res_path,
-            #     )
+
+            if export_props.export_type == "ANIMATION":
+                row = init_panel.row()
+                row.prop(export_props, "anim_loop_mode")
 
             init_panel.operator(GW_OT_setup_collection_export.bl_idname)
 
