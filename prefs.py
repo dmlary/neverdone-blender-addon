@@ -3,11 +3,19 @@ import bpy
 import pathlib
 import os
 import re
-from . import debug
+from . import debug, export
 
 # API prefix used for all operators
 PREFIX = "neverdone"
 NPANEL_NAME = "Neverdone (Godot)"
+
+# Animation interpolation modes, copied from the sampling infterpolation
+# fallback values.  Not in export because we want to expose a default value
+# in the preference to support projects using stop-motion animation.
+ANIM_INTERPOLATION = [
+    ("LINEAR", "Linear", "Linear interpolation between keyframes", 0),
+    ("STEP", "Step", "No interpolation between keyframes", 1),
+]
 
 
 class GW_preferences(bpy.types.AddonPreferences):
@@ -53,6 +61,11 @@ class GW_preferences(bpy.types.AddonPreferences):
         default="PATH-",
         description="Prefix for Path3D Objects",
     )
+    anim_interpolation_default: bpy.props.EnumProperty(
+        name="Default Animation Interpolation",
+        items=ANIM_INTERPOLATION,
+        description="Default Sampling Interpolation Fallback for Animation Export Collections",
+    )
 
     def draw(self, _context):
         layout = self.layout
@@ -85,6 +98,9 @@ class GW_preferences(bpy.types.AddonPreferences):
 
         layout.separator()
         layout.prop(self, "path_prefix")
+
+        layout.separator()
+        layout.prop(self, "anim_interpolation_default")
 
     def get_output_path(self, tail: str = "") -> pathlib.Path:
         blend_file = pathlib.Path(bpy.data.filepath)
@@ -157,6 +173,9 @@ class GW_preferences(bpy.types.AddonPreferences):
         s = re.sub(lowercase_then_upper, "_", part)
         s = re.sub(acronym_then_capital, "_", s)
         return s.lower()
+
+    def get_anim_interpolation_default_value(self) -> int:
+        return 0 if self.anim_interpolation_default == "LINEAR" else 1
 
 
 classes = [

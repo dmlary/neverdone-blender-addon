@@ -2,7 +2,8 @@ import pathlib
 import os
 import bpy
 
-from .prefs import GW_preferences, PREFIX, NPANEL_NAME
+from . import debug
+from .prefs import GW_preferences, PREFIX, NPANEL_NAME, ANIM_INTERPOLATION
 
 # name used for Collection Exporters
 EXPORTER_NAME = "Neverdone (Godot GLTF)"
@@ -87,6 +88,61 @@ class GW_PG_export_properties(bpy.types.PropertyGroup):
     anim_loop_mode: bpy.props.EnumProperty(
         name="Loop Mode", items=ANIM_LOOP_MODES, description="Animation looping mode"
     )
+    anim_interpolation: bpy.props.EnumProperty(
+        name="Sampling Interpolation Fallback",
+        items=ANIM_INTERPOLATION,
+        get=lambda self: get_anim_interpolation(),
+        set=lambda self, val: set_anim_interpolation(val),
+    )
+
+
+def get_collection_exporter(collection):
+    """
+    Get the addon-specific collection exporter from the collection exporters
+    configured on the collection.  If it's not found, returns None.
+    """
+    for ex in collection.exporters:
+        if ex.name == EXPORTER_NAME:
+            return ex
+    return None
+
+
+def get_anim_interpolation():
+    """
+    Getter for animation interpolation; defers to collection exporter property
+    if the exporter is configured.  Otherwise, defaults to Linear.
+    """
+    exporter = get_collection_exporter(bpy.context.collection)
+    if exporter is None:
+        addon_prefs: GW_preferences = bpy.context.preferences.addons[
+            __package__
+        ].preferences
+        return addon_prefs.get_anim_interpolation_default_value()
+
+    val = exporter.export_properties.export_sampling_interpolation_fallback
+    return 0 if val == "LINEAR" else 1
+
+
+def set_anim_interpolation(val):
+    """
+    Setter for animation interpolation; sets the value on the collection
+    exporter if it has been configured.  Otherwise a noop.
+    """
+    exporter = get_collection_exporter(bpy.context.collection)
+    if exporter is None:
+        return
+
+    exporter.export_properties.export_sampling_interpolation_fallback = (
+        "LINEAR" if val == 0 else "STEP"
+    )
+
+    # Force a property panel refresh so the change is visible.  If we don't do
+    # this, the exporter properties don't display the change until you mouse
+    # over the panel
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == "PROPERTIES":
+                area.tag_redraw()
 
 
 class GW_OT_setup_collection_export(bpy.types.Operator):
@@ -153,6 +209,13 @@ class GW_OT_setup_collection_export(bpy.types.Operator):
         if "asset_id" not in collection:
             collection["asset_id"] = create_asset_id()
 
+        # We need to save off some properties before possibly creating the
+        # collection.  This is because our properties mirror the collection's
+        # properties, and creating a new exporter will change the values in
+        # our properties.
+        export_props: GW_PG_export_properties = collection.godot_workflow_props
+        interpolation = export_props.anim_interpolation
+
         # Get the exporter for the active collection
         exporter = self._get_exporter(collection)
 
@@ -184,11 +247,13 @@ class GW_OT_setup_collection_export(bpy.types.Operator):
         # We just pull the animation tracks out of the GLTF file.
         exporter_props.export_materials = "NONE"
 
+        # Set the interpolation mode
+        exporter_props.export_sampling_interpolation_fallback = interpolation
+
         # We need to set the animation library subpath for the collection.  We
         # bundle all animation tracks for the same rig into one animation
         # library.  So the animation library subpath is based off the RIG-*
         # collection the armature was linked in from.
-        export_props: GW_PG_export_properties = collection.godot_workflow_props
         export_props.anim_lib_res_path = ""
 
         # XXX don't like magic strings here; figure out a good way to expose
@@ -339,6 +404,9 @@ class GW_PT_export_npanel(bpy.types.Panel):
                 row.prop(export_props, "base_scene_res_path")
 
             if export_props.export_type == "ANIMATION":
+                row = init_panel.row()
+                row.prop(export_props, "anim_interpolation")
+
                 row = init_panel.row()
                 row.prop(export_props, "anim_loop_mode")
 
