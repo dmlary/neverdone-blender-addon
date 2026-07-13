@@ -3,7 +3,7 @@ import bpy
 import pathlib
 import os
 import re
-from . import debug, export
+from . import debug
 
 # API prefix used for all operators
 PREFIX = "neverdone"
