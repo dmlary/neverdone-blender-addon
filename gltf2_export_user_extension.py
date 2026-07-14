@@ -365,6 +365,32 @@ class glTF2ExportUserExtension:
             export.ANIM_LOOP_MODES, self.export_props.anim_loop_mode
         )
 
+    def gather_animation_channel_hook(
+        self,
+        animation_channel,
+        channel,
+        blender_object,
+        bone,
+        action_name,
+        node_channel_is_animated,
+        export_settings,
+    ):
+        if blender_object.type != "ARMATURE":
+            return
+
+        # We want to allow the riggers to hard-code the interpolation mode for
+        # specific bones directly on the deformation bone.  This is in support
+        # of mixing stop-motion with linear root motion animation.  This will
+        # allow the riggers to mark the root bone as linear interpolation, but
+        # set the rest of the bones to explicitly be stepped interpolation, or
+        # use the fallback stepped animation.
+        # Godot will force the channel interpolation using this data on import.
+        bone = blender_object.data.bones[bone]
+        if "godot_interpolation" in bone:
+            if animation_channel.extras is None:
+                animation_channel.extras = {}
+            animation_channel.extras["interpolation"] = bone["godot_interpolation"]
+
     def _pre_process_collection(self, collection, log):
         """Pre-process a collection for GLTF export
 
