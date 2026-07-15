@@ -203,10 +203,13 @@ class glTF2ExportUserExtension:
         ## need to be hidden in post_export_hook()
         self._enabled_objects = []
 
+        ## Export properties configured on the export collection
+        self.export_props: export.GW_PG_export_properties
+
     def pre_export_hook(self, export_settings):
         log = export_settings["log"]
         collection = bpy.data.collections[export_settings["gltf_collection"]]
-        export_props: export.GW_PG_export_properties = collection.godot_workflow_props
+        self.export_props = collection.godot_workflow_props
 
         # If this is an animation export, ensure the export animation name
         # matches the collection name.  More details in
@@ -214,7 +217,7 @@ class glTF2ExportUserExtension:
         # NOTE: We probably should do something like this for the export
         # destination path.  Right now the user has to click on setup again if
         # they change the name of the collection.
-        if export_props.export_type == "ANIMATION":
+        if self.export_props.export_type == "ANIMATION":
             # force the exported animation name to match the collection name
             export_settings["gltf_nla_strips_merged_animation_name"] = collection.name
 
@@ -245,14 +248,13 @@ class glTF2ExportUserExtension:
 
     def gather_scene_hook(self, gltf2_scene, blender_scene, export_settings):
         debug.print("gather scene hook")
-        collection = bpy.data.collections[export_settings["gltf_collection"]]
-        export_props: export.GW_PG_export_properties = collection.godot_workflow_props
+
         # Add the human-readable export type as an asset_type extra in the scene
-        gltf2_scene.extras["asset_type"] = export_props.export_type
+        gltf2_scene.extras["asset_type"] = self.export_props.export_type
 
         # Add the human-readable type for the root node
         gltf2_scene.extras["root_node_type"] = enum_get_label(
-            export.ROOT_NODE_TYPES, export_props.root_node_type
+            export.ROOT_NODE_TYPES, self.export_props.root_node_type
         )
 
         # Godot won't re-import the split GLTF file if only the .bin file
@@ -357,6 +359,37 @@ class glTF2ExportUserExtension:
             gltf2_animation.extras = {"rig_asset_ref": collection["asset_id"]}
         else:
             debug.print("ERROR: no asset_id in collection!!!")
+
+        # Also note the loop mode
+        gltf2_animation.extras["loop_mode"] = enum_get_label(
+            export.ANIM_LOOP_MODES, self.export_props.anim_loop_mode
+        )
+
+    def gather_animation_channel_hook(
+        self,
+        animation_channel,
+        channel,
+        blender_object,
+        bone,
+        action_name,
+        node_channel_is_animated,
+        export_settings,
+    ):
+        if blender_object.type != "ARMATURE":
+            return
+
+        # We want to allow the riggers to hard-code the interpolation mode for
+        # specific bones directly on the deformation bone.  This is in support
+        # of mixing stop-motion with linear root motion animation.  This will
+        # allow the riggers to mark the root bone as linear interpolation, but
+        # set the rest of the bones to explicitly be stepped interpolation, or
+        # use the fallback stepped animation.
+        # Godot will force the channel interpolation using this data on import.
+        bone = blender_object.data.bones[bone]
+        if "godot_interpolation" in bone:
+            if animation_channel.extras is None:
+                animation_channel.extras = {}
+            animation_channel.extras["interpolation"] = bone["godot_interpolation"]
 
     def _pre_process_collection(self, collection, log):
         """Pre-process a collection for GLTF export
