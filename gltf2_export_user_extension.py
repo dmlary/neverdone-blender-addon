@@ -248,6 +248,7 @@ class glTF2ExportUserExtension:
 
     def gather_scene_hook(self, gltf2_scene, blender_scene, export_settings):
         debug.print("gather scene hook")
+        collection = bpy.data.collections[export_settings["gltf_collection"]]
 
         # Add the human-readable export type as an asset_type extra in the scene
         gltf2_scene.extras["asset_type"] = self.export_props.export_type
@@ -274,6 +275,14 @@ class glTF2ExportUserExtension:
             bpy.context.scene.render.fps,
             bpy.context.scene.render.fps_base,
         ]
+
+        # When exporting collections, be sure to include the instance offset in
+        # the extras.  This allows the user to "Export as Collection", which
+        # uses the bounding box center, then offset it using the instance
+        # offset.  This is necessary to make scenes that use collection
+        # instances look the same between Blender & Godot.
+        if collection.instance_offset.length_squared > 0.0:
+            gltf2_scene.extras["instance_offset"] = list(collection.instance_offset)
 
     def gather_node_hook(self, gltf2_node, blender_object, export_settings):
         debug.print("gather node hook")
