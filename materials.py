@@ -1,6 +1,3 @@
-"""
-Material helpers & panels
-"""
 import bpy
 
 from . import debug
@@ -17,23 +14,17 @@ def _find_channel_map_node(material):
     if material is None or not material.use_nodes:
         return None
     for node in material.node_tree.nodes:
-        debug.print(f"CHECK {node.name}, {node.type}, {node.get(CHANNEL_MAP_PROP_NAME)}, {node}")
         if node.type != "GROUP":
             continue
         if node.get(CHANNEL_MAP_PROP_NAME):
             return node
-    debug.print(f"NOTE: No shader channel map node found in {material}")
+    # debug.print(f"NOTE: No shader channel map node found in {material}")
     return None
 
 
 _SEPARATE_CHANNEL_INDEX = {
-    "Red": 0,
-    "Green": 1,
-    "Blue": 2,
-    "Alpha": 3,
-    "X": 0,
-    "Y": 1,
-    "Z": 2,
+    "Red": 0, "Green": 1, "Blue": 2, "Alpha": 3,
+    "X":   0,   "Y":   1, "Z":    2,
 }
 
 def _resolve_socket_input_channel(socket):
@@ -84,7 +75,15 @@ def _resolve_socket_input_channel(socket):
 
 
 def build_material_channel_map(material):
-    """Return { '_CUSTOM0.RG': [r_src, g_src], '_CUSTOM0.BA': [b_src, a_src], ... }"""
+    """
+    Given a material, but a output channel map describing which attribute
+    channels should be written to which godot shader channels.  The returned
+    format is limited by what can be stored in a Blender custom property.
+
+    Returns a list of:
+        { "dest": { "attr": "_CUSTOM0.BA", "ch": 0 },
+          "src":  { "attr": "WEAR", "ch": 0 } }
+    """
     node = _find_channel_map_node(material)
     if node is None:
         return {}
@@ -117,7 +116,8 @@ def build_material_channel_map(material):
     for name in ("CUSTOM0", "CUSTOM1", "CUSTOM2"):
         panel = node_group.interface.items_tree.get(name)
         if not panel:
-            debug.print(f"ERROR: Shader channel group {node} missing channel {name}")
+            debug.print(
+                f"ERROR: Shader channel group {node} missing channel {name}")
             return
         for (ch, index, ext) in (("Red",  0, "RG"), ("Green", 1, "RG"),
                                  ("Blue", 0, "BA"), ("Alpha", 1, "BA")):
@@ -227,11 +227,6 @@ class GW_PT_material_npanel(bpy.types.Panel):
         layout = self.layout
         layout.operator(GW_OT_add_shader_channels_group.bl_idname)
         
-
-
-
-
-
 classes = [
     GW_OT_add_shader_channels_group,
     GW_PT_material_npanel,
