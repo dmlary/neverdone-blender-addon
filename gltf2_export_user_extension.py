@@ -438,8 +438,14 @@ class glTF2ExportUserExtension:
                 continue
 
             # This output attribute is not present, but because no later output
-            # attribute is present either, we don't need to do anything.
+            # attribute is present either.
+            # NOTE: we're going to delete the unused attribute here.  If we
+            # don't do this, the stale data from previous runs will be written
+            # out to those old channels on export.
             if not seen:
+                stale = attributes.get(dest)
+                if stale:
+                    attributes.remove(stale)
                 continue
 
             # Alright, this output attribute is absent, and we've seen a later
