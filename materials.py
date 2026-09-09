@@ -26,14 +26,14 @@ def _find_channel_map_node(material):
     return None
 
 
-_SEPARATE_CHANNEL_NAMES = {
-    "Red": "Red",
-    "Green": "Green",
-    "Blue": "Blue",
-    "Alpha": "Alpha",
-    "X": "Red",
-    "Y": "Green",
-    "Z": "Blue",
+_SEPARATE_CHANNEL_INDEX = {
+    "Red": 0,
+    "Green": 1,
+    "Blue": 2,
+    "Alpha": 3,
+    "X": 0,
+    "Y": 1,
+    "Z": 2,
 }
 
 def _resolve_socket_input_channel(socket):
@@ -42,11 +42,11 @@ def _resolve_socket_input_channel(socket):
     Attribute & channel.
     """
     if not socket.is_linked:
-        return None
+        return {}
 
     # Initialize the queue we'll walk.  By default, we take the red channel if
     # they hook a Color up to one of our sockets.
-    queue = [(socket, 'Red')]
+    queue = [(socket, 0)]
 
     while queue:
         sock, ch = queue.pop()
@@ -62,9 +62,9 @@ def _resolve_socket_input_channel(socket):
 
         # terminals: nothing upstream, this is the source
         if parent.type == "ATTRIBUTE":
-            return (parent.attribute_name, ch)
+            return { "attr": parent.attribute_name, "ch": ch }
         if parent.type == "VERTEX_COLOR":
-            return (parent.layer_name, ch)
+            return { "attr": parent.layer_name, "ch": ch }
 
         # Handle the splitters by figuring out which channel we're using, and
         # adding the input node along with the channel to the queue.
@@ -77,10 +77,10 @@ def _resolve_socket_input_channel(socket):
             # we're using from the input.
             queue.append((
                 in_sock, 
-                _SEPARATE_CHANNEL_NAMES[link.from_socket.name]
+                _SEPARATE_CHANNEL_INDEX[link.from_socket.name]
             ))
 
-    return None 
+    return {} 
 
 
 def build_material_channel_map(material):
@@ -91,7 +91,7 @@ def build_material_channel_map(material):
     node_group = node.node_tree
     if node_group is None:
         # shouldn't happen
-        return ()
+        return []
 
     # Build a map of the inputs based on the socket name.  This will give us
     # { "UV2": node.inputs[n], "CUSTOM0.R": node.inputs[m], ...)
@@ -108,25 +108,27 @@ def build_material_channel_map(material):
 
     # build the output map, key is the vec2 Attribute name we will write the
     # data to.
-    out = {}
+    out = []
 
     # XXX _resolve_socket_input_channel() doesn't support UV Map node, and/or
     # Combine XYZ Node.
-    out["_UV2"] = [None, None]
+    # out["_UV2"] = [False, False]
 
     for name in ("CUSTOM0", "CUSTOM1", "CUSTOM2"):
         panel = node_group.interface.items_tree.get(name)
         if not panel:
             debug.print(f"ERROR: Shader channel group {node} missing channel {name}")
             return
-        out[f"_{name}.RG"] = [
-            _resolve_socket_input_channel(inputs[f"{name}.Red"]),
-            _resolve_socket_input_channel(inputs[f"{name}.Green"]),
-        ]
-        out[f"_{name}.BA"] = [
-            _resolve_socket_input_channel(inputs[f"{name}.Blue"]),
-            _resolve_socket_input_channel(inputs[f"{name}.Alpha"]),
-        ]
+        for (ch, index, ext) in (("Red",  0, "RG"), ("Green", 1, "RG"),
+                                 ("Blue", 0, "BA"), ("Alpha", 1, "BA")):
+            src = _resolve_socket_input_channel(inputs[f"{name}.{ch}"])
+            if not src:
+                continue
+
+            out.append({
+                "dest": { "attr": f"_{name}.{ext}", "ch": index },
+                "src": src
+            })
 
     return out
 
@@ -184,10 +186,11 @@ class GW_OT_add_shader_channels_group(bpy.types.Operator):
         # Create the node group
         group = bpy.data.node_groups.new(VERTEX_NODE_NAME, 'ShaderNodeTree')
 
+        # XXX Disabled for right now
         # Explicitly create UV2 socket as Vector.  Combine XYZ can be used to
         # set each channel.
-        s = group.interface.new_socket("UV2", socket_type="NodeSocketVector")
-        s.description = "UV2 channel (vec2)"
+        # s = group.interface.new_socket("UV2", socket_type="NodeSocketVector")
+        # s.description = "UV2 channel (vec2)"
 
         # For CUSTOM0-2, we need to fan out the RGBA channels, because the
         # Combine Color node only supports RGB.

@@ -10,6 +10,18 @@ import mathutils
 from . import prefs
 from . import export
 from . import instance_props
+from .materials import build_material_channel_map
+
+# Used during material export to get the number of channels in the source
+# attribute
+CHANNEL_COUNT = {
+    "FLOAT": 1, "INT": 1, "BOOLEAN": 1, "INT8": 1,
+    "INT16_2D": 2, "INT32_2D": 2,
+    "FLOAT2": 2,
+    "FLOAT_VECTOR": 3,
+    "FLOAT4": 4, "FLOAT_COLOR": 4, "BYTE_COLOR": 4, "QUATERNION": 4,
+    "FLOAT4X4": 16,
+}
 
 
 def get_collision_shape_box(obj) -> Optional[dict[str, Any]]:
@@ -356,6 +368,135 @@ class glTF2ExportUserExtension:
                 node_path = os.path.relpath(dest_path, src_path)
                 extras[k] = node_path
 
+    def gather_node_mesh_hook(self, gltf_mesh, blender_object, export_settings):
+        debug.print({
+            "fn": "gather_node_mesh_hook",
+            "gltf_mesh": gltf_mesh,
+            "blender_mesh": blender_object,
+            })
+
+
+        # Walk through all materials on this mesh, and take their channel maps
+        # and unify them into a 
+        unified_map = {}
+        materials = [slot.material for slot in blender_object.material_slots]
+        for material in materials:
+            mat_map = material.get("_godot_channel_map")
+            if not mat_map:
+                continue
+            for entry in mat_map:
+                dest_name = entry["dest"]["attr"]
+                dest = (dest_name, entry["dest"]["ch"])
+                src_name = entry["src"]["attr"]
+                src = (src_name, entry["src"]["ch"])
+
+                # Check for collisions
+                if dest in unified_map and unified_map[dest] != src:
+                    print("!!! ERROR !!!: Materials on object"
+                        f" {blender_object.name} specify different shader"
+                        " input channels for the same output channel:"
+                        f" output {dest}, inputs {src}, {unified_map[dest]}."
+                        " Not mapping attribute to output, first slot wins."
+                              )
+                    continue
+
+                # No collision, add it to the channel map
+
+                unified_map[dest] = src
+
+        debug.print(f"Unified material map for {blender_object}",
+                    unified_map)
+
+        attributes = blender_object.data.attributes
+
+        # We're going to create our output attributes, along with a scratch
+        # list in python where we can assemble the channels properly.
+        dest_data = {}
+        for dest_name, _ in unified_map:
+            if dest_name in dest_data:
+                continue
+
+            # Make sure the destination property group exists, and has the
+            # right storage type & domain.
+            dest = attributes.get(dest_name)
+            if dest and (dest.data_type != "FLOAT2" or dest.domain != "POINT"):
+                # data-type mismatch; gozilla smash
+                attributes.remove(dest)
+            if not dest:
+                dest = attributes.new(dest_name, type="FLOAT2", domain="POINT")
+
+            # Save off the output attribute, and the python array we'll use to
+            # piece together the various channels.
+            dest_data[dest_name] = (dest, [0.0] * len(dest.data) * 2)
+
+        # XXX NEED THE CHANNEL COUNT IN HERE TOO!!!
+
+        # Alright, since we may be using multiple channels from each source,
+        # we're going to read in the source data one time.
+        # Maps attribute name => (channel_count, data)
+        src_data = {}
+        for src_name, _ in unified_map.values():
+            if src_name in src_data:
+                continue
+
+            # Grab the source attribute
+            src = attributes.get(src_name)
+            if not src:
+                print(f"Error: Attribute `{src_name}` not found on"
+                    f" {blender_object}")
+                continue
+
+            # Read the data out into a python variable
+            ch_count = CHANNEL_COUNT[src.data_type]
+            data = [0.0] * len(src.data) * ch_count
+            if src.data_type.endswith("COLOR"):
+                src.data.foreach_get("color", data)
+            else:
+                src.data.foreach_get("vector", data)
+
+            # save it off for use later.
+            src_data[src_name] = (ch_count, data)
+
+
+        # Now we copy the channels
+        for (dest_name, dest_ch), (src_name, src_ch) in unified_map.items():
+            src_stride, src = src_data[src_name]
+            if not src:
+                continue
+
+            _, dest = dest_data[dest_name]
+            if not dest:
+                continue
+
+            debug.print(f"COPY {src_name}.{src_ch} ({src_stride}) -> {dest_name}.{dest_ch}")
+
+            dest[dest_ch::2] = src[src_ch::src_stride]
+
+        debug.print(dest_data, src_data)
+
+        # Then write the data back to the output channels
+        for dest, data in dest_data.values():
+            dest.data.foreach_set("vector", data)
+
+
+    def gather_mesh_hook(self, gltf2_mesh, blender_mesh, blender_object, vertex_groups, modifiers, materials, export_settings):
+        debug.print({
+            "fn": "gather_mesh_hook",
+            "materials": materials,
+        })
+
+        # Move/rename our custom attributes to the names needed by Godot.
+        for src, dest in (('_CUSTOM0.RG', 'TEXCOORD_2'),
+                          ('_CUSTOM0.BA', 'TEXCOORD_3'),
+                          ('_CUSTOM1.RG', 'TEXCOORD_4'),
+                          ('_CUSTOM1.BA', 'TEXCOORD_5'),
+                          ('_CUSTOM2.RG', 'TEXCOORD_6'),
+                          ('_CUSTOM2.BA', 'TEXCOORD_7'),):
+            for prim in gltf2_mesh.primitives:
+                attrs = prim.attributes
+                attrs[dest] = attrs[src]
+                del attrs[src]
+
     def animation_action_hook(
         self, gltf2_animation, blender_object, blender_action_data, export_settings
     ):
@@ -503,6 +644,16 @@ class glTF2ExportUserExtension:
             debug.print("replace material", mat, " with ", dummy_mat)
             mat.user_remap(dummy_mat)
             dummy_mat["asset_ref"] = mat["asset_id"]
+
+            # Build the shader channel map now.  This allows us to say which
+            # Attribute channels on a mesh should be mapped to the individual
+            # channels on UV2, CUSTOM0-2.  If it's a non-empty map, set it on
+            # the dummy material so we can use it during the gather hooks.
+            channel_map = build_material_channel_map(mat)
+            if channel_map:
+                debug.print("CHANNEL MAP", channel_map)
+                dummy_mat["_godot_channel_map"] = channel_map
+
             self._swapped_materials.append((mat, dummy_mat))
 
         # Enable all disabled collision objects in the collection, and generate
@@ -531,7 +682,6 @@ class glTF2ExportUserExtension:
         # Restore collection empties to collection instances
         for obj in self._collection_instances:
             obj.instance_type = "COLLECTION"
-            pass
 
         # Replace placeholder materials with the original materials
         for mat, dummy_mat in self._swapped_materials:
