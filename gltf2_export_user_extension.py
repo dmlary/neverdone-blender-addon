@@ -1,7 +1,7 @@
 import os
 import re
 from datetime import datetime
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional
 from . import debug
 import numpy as np
 import bpy
@@ -13,7 +13,7 @@ from . import instance_props
 from .materials import build_material_channel_map
 
 # Used during material export to get the number of channels in the source
-# attribute
+# attribute based on the attribute type.
 CHANNEL_COUNT = {
     "FLOAT": 1, "INT": 1, "BOOLEAN": 1, "INT8": 1,
     "INT16_2D": 2, "INT32_2D": 2,
@@ -22,7 +22,6 @@ CHANNEL_COUNT = {
     "FLOAT4": 4, "FLOAT_COLOR": 4, "BYTE_COLOR": 4, "QUATERNION": 4,
     "FLOAT4X4": 16,
 }
-
 
 def get_collision_shape_box(obj) -> Optional[dict[str, Any]]:
     """If the mesh describes a cube shape, return collision shape info"""
@@ -369,50 +368,92 @@ class glTF2ExportUserExtension:
                 extras[k] = node_path
 
     def gather_node_mesh_hook(self, gltf_mesh, blender_object, export_settings):
-        debug.print({
-            "fn": "gather_node_mesh_hook",
-            "gltf_mesh": gltf_mesh,
-            "blender_mesh": blender_object,
-            })
-
+        # We use this hook to generate our output attributes, assembled from
+        # various channels of other attributes on the mesh.  The channel
+        # mapping can be configured using a Material Node Group that is added
+        # to the exported Material.  That node group allows the user to wire up
+        # specific Attribute Node values, and the channels within them to
+        # output channels for CUSTOM0/1/2.
+        attributes = blender_object.data.attributes
 
         # Walk through all materials on this mesh, and take their channel maps
-        # and unify them into a 
-        unified_map = {}
+        # and unify them into a single output map we'll use to populate the
+        # attributes on the object.
+        # Map: (output name, output channel) => (source name, source channel)
+        output_map = {}
         materials = [slot.material for slot in blender_object.material_slots]
         for material in materials:
-            mat_map = material.get("_godot_channel_map")
-            if not mat_map:
+            material_map = material.get("_godot_channel_map")
+            if not material_map:
                 continue
-            for entry in mat_map:
-                dest_name = entry["dest"]["attr"]
-                dest = (dest_name, entry["dest"]["ch"])
-                src_name = entry["src"]["attr"]
-                src = (src_name, entry["src"]["ch"])
+
+            # Go through each channel in the material's channel map and add the
+            # mapping to our output map.  Also, check for collisions to make
+            # sure Material A, and Material B, don't both use the same output
+            # channel (CUSTOM0.Red) with different inputs.
+            for entry in material_map:
+                dest = (entry["dest"]["attr"], entry["dest"]["ch"])
+                src = (entry["src"]["attr"], entry["src"]["ch"])
 
                 # Check for collisions
-                if dest in unified_map and unified_map[dest] != src:
-                    print("!!! ERROR !!!: Materials on object"
+                if dest in output_map and output_map[dest] != src:
+                    print(
+                        "!!! ERROR !!!: Materials on object"
                         f" {blender_object.name} specify different shader"
                         " input channels for the same output channel:"
-                        f" output {dest}, inputs {src}, {unified_map[dest]}."
+                        f" output {dest}, inputs {src}, {output_map[dest]}."
                         " Not mapping attribute to output, first slot wins."
-                              )
+                    )
                     continue
 
                 # No collision, add it to the channel map
+                output_map[dest] = src
 
-                unified_map[dest] = src
+        # If the map is empty, we're done here
+        if not output_map:
+            return
 
-        debug.print(f"Unified material map for {blender_object}",
-                    unified_map)
+        # Ok, we need to fill gaps in the output map.  Godot won't import
+        # CUSTOM1 if TEXCOORD3/4/5/6 are all present, even though 5/6 are the
+        # only ones containing CUSTOM1 data.  So we're going to find the last
+        # CUSTOM output attribute, and ensure we create all the preceding
+        # attribute maps.
+        #
+        # We're doing this by walking the list of output attributes from last
+        # to first.  Once we see one defined in the output map, we know we need
+        # to fill every one before that.  After we've seen one, if the
+        # preceeding output attribute does not exist in our output map, we'll
+        # create a new entry for it, with a source that results in the data
+        # staying zero.
+        seen = False
+        for dest in reversed(('_CUSTOM0.RG', '_CUSTOM0.BA',
+                              '_CUSTOM1.RG', '_CUSTOM1.BA',
+                              '_CUSTOM2.RG', '_CUSTOM2.BA',)):
 
-        attributes = blender_object.data.attributes
+            # check if there is already an entry for the destination attribute
+            # in the output map.  If so, mark that we've seen at least one
+            # output, and continue.
+            if any(k[0] == dest for k in output_map):
+                seen = True
+                continue
+
+            # This output attribute is not present, but because no later output
+            # attribute is present either, we don't need to do anything.
+            if not seen:
+                continue
+
+            # Alright, this output attribute is absent, and we've seen a later
+            # output attribute, we need to make sure the output attribute is
+            # created, but doesn't copy anything over.  The attribute remains
+            # zero'd; it's just a placeholder to make sure the later attributes
+            # are imported by Godot.
+            output_map[(dest, 0)] = ('', -1)
 
         # We're going to create our output attributes, along with a scratch
         # list in python where we can assemble the channels properly.
+        # map: output name => (output attribute, data)
         dest_data = {}
-        for dest_name, _ in unified_map:
+        for dest_name, _ in output_map:
             if dest_name in dest_data:
                 continue
 
@@ -429,13 +470,20 @@ class glTF2ExportUserExtension:
             # piece together the various channels.
             dest_data[dest_name] = (dest, [0.0] * len(dest.data) * 2)
 
-        # XXX NEED THE CHANNEL COUNT IN HERE TOO!!!
+        debug.print(f"Unified material map for {blender_object}:",
+                    output_map)
 
         # Alright, since we may be using multiple channels from each source,
         # we're going to read in the source data one time.
-        # Maps attribute name => (channel_count, data)
+        # Maps source name => (source channel count, data)
         src_data = {}
-        for src_name, _ in unified_map.values():
+        for src_name, _ in output_map.values():
+            # If no source name is set, that means we just want the output
+            # attribute to be zeroed, so nothing to copy.
+            if not src_name:
+                continue
+
+            # Already copied the source in for a different output channel
             if src_name in src_data:
                 continue
 
@@ -458,8 +506,12 @@ class glTF2ExportUserExtension:
             src_data[src_name] = (ch_count, data)
 
 
-        # Now we copy the channels
-        for (dest_name, dest_ch), (src_name, src_ch) in unified_map.items():
+        # After all that setup, we can now easily copy channels from the source
+        # data into our output channels.
+        for (dest_name, dest_ch), (src_name, src_ch) in output_map.items():
+            if not src_name in src_data:
+                continue
+
             src_stride, src = src_data[src_name]
             if not src:
                 continue
@@ -468,24 +520,22 @@ class glTF2ExportUserExtension:
             if not dest:
                 continue
 
-            debug.print(f"COPY {src_name}.{src_ch} ({src_stride}) -> {dest_name}.{dest_ch}")
-
+            # Copy the specific channel.  The 2 here is the hard-coded channel
+            # count for the output attribute, which we know is vec2.
             dest[dest_ch::2] = src[src_ch::src_stride]
 
-        debug.print(dest_data, src_data)
-
-        # Then write the data back to the output channels
+        # Finally, write the output data to the attributes
         for dest, data in dest_data.values():
             dest.data.foreach_set("vector", data)
 
+        debug.print("data done")
+
 
     def gather_mesh_hook(self, gltf2_mesh, blender_mesh, blender_object, vertex_groups, modifiers, materials, export_settings):
-        debug.print({
-            "fn": "gather_mesh_hook",
-            "materials": materials,
-        })
 
-        # Move/rename our custom attributes to the names needed by Godot.
+        # Move/rename our custom attributes to the names needed by Godot.  This
+        # mapping comes directly from how Godot constructs CUSTOM0/1/2 from the
+        # various TEXCOORD_n attributes.
         for src, dest in (('_CUSTOM0.RG', 'TEXCOORD_2'),
                           ('_CUSTOM0.BA', 'TEXCOORD_3'),
                           ('_CUSTOM1.RG', 'TEXCOORD_4'),
@@ -494,6 +544,11 @@ class glTF2ExportUserExtension:
                           ('_CUSTOM2.BA', 'TEXCOORD_7'),):
             for prim in gltf2_mesh.primitives:
                 attrs = prim.attributes
+                if not src in attrs:
+                    continue
+
+                # overwrite the TEXCOORD_n with our values, and delete the
+                # _CUSTOMn.xx key.
                 attrs[dest] = attrs[src]
                 del attrs[src]
 
