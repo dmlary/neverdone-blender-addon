@@ -8,6 +8,7 @@ submodule_names = [
     "tools",
     "instance_props",
     "gltf2_export_user_extension",
+    "materials",
 ]
 
 if "bpy" in locals():
@@ -27,6 +28,7 @@ from . import prefs
 from . import tools
 from . import export
 from . import instance_props
+from . import materials
 from .gltf2_export_user_extension import glTF2ExportUserExtension
 
 # Make sure the GLTF2 export extension is picked up
@@ -38,9 +40,11 @@ def register():
     export.register()
     instance_props.register()
     tools.register()
+    materials.register()
 
 
 def unregister():
+    materials.unregister()
     tools.unregister()
     instance_props.unregister()
     export.unregister()

@@ -198,6 +198,8 @@ class GW_OT_setup_collection_export(bpy.types.Operator):
         exporter_props.export_animations = False
         # Export at Collection Center
         exporter_props.at_collection_center = True
+        # Export Attributes to support CUSTOM0-2 for Godot Shaders
+        exporter_props.export_attributes = True
 
         # Just a notice that we're done
         self.report({"INFO"}, f"Updated {collection.name} exporter {exporter.name}")
