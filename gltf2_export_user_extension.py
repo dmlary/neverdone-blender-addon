@@ -409,10 +409,6 @@ class glTF2ExportUserExtension:
                 # No collision, add it to the channel map
                 output_map[dest] = src
 
-        # If the map is empty, we're done here
-        if not output_map:
-            return
-
         # Ok, we need to fill gaps in the output map.  Godot won't import
         # CUSTOM1 if TEXCOORD3/4/5/6 are all present, even though 5/6 are the
         # only ones containing CUSTOM1 data.  So we're going to find the last
@@ -454,6 +450,11 @@ class glTF2ExportUserExtension:
             # zero'd; it's just a placeholder to make sure the later attributes
             # are imported by Godot.
             output_map[(dest, 0)] = ('', -1)
+
+        # If the map is empty, we're done here.  We do this late so if the user
+        # removed all channel mappings, we clear the attributes off the object.
+        if not output_map:
+            return
 
         # We're going to create our output attributes, along with a scratch
         # list in python where we can assemble the channels properly.
